@@ -1,4 +1,13 @@
+#include <errno.h>
+#include <string.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include "systemcalls.h"
+#include <sys/wait.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/types.h>
 
 /**
  * @param cmd the command to execute with system()
@@ -10,6 +19,11 @@
 bool do_system(const char *cmd)
 {
 
+    int ret = system(cmd);
+	if (ret == -1)
+		return false;
+	else
+		return true;
 /*
  * TODO  add your code here
  *  Call the system() function with the command set in the cmd
@@ -17,7 +31,6 @@ bool do_system(const char *cmd)
  *   or false() if it returned a failure
 */
 
-    return true;
 }
 
 /**
@@ -47,8 +60,33 @@ bool do_exec(int count, ...)
     command[count] = NULL;
     // this line is to avoid a compile warning before your implementation is complete
     // and may be removed
-    command[count] = command[count];
+    //command[count] = command[count];
 
+    if (strchr(command[0],'/') == 0)
+	    return false;
+
+    int status;
+
+    pid_t pid = fork();
+    if (pid == -1)
+	    return false;
+    else if (pid == 0){
+	    execv(command[0],command);
+    }
+
+    if (waitpid(pid, &status, 0) == -1){
+	    return false;
+    }
+    else if (WIFEXITED(status)){
+	    if (WEXITSTATUS(status) == 0){
+		    va_end(args);
+		    return true;
+	    }
+	    else if (WEXITSTATUS(status) == 1){
+		    va_end(args);
+		    return false;
+	    }
+    }
 /*
  * TODO:
  *   Execute a system command by calling fork, execv(),
@@ -82,8 +120,56 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
     command[count] = NULL;
     // this line is to avoid a compile warning before your implementation is complete
     // and may be removed
-    command[count] = command[count];
+    //command[count] = command[count];
 
+    int status;
+    int fd = open(outputfile, O_WRONLY|O_TRUNC|O_CREAT, 0644);
+    if (fd < 0) {
+	    perror("open");
+	    return false;
+    }
+
+    pid_t pid = fork();
+    if (pid == -1){
+	    close(fd);
+	    return false;
+    }
+
+    if (!pid){
+	    if (dup2(fd,1) == -1){
+		    close(fd);
+		    return false;
+	    }
+
+	    if (execv(command[0],command) == -1){
+		    close(fd);
+		    return false;
+	    }
+
+	    close(fd);
+    }
+
+    if (waitpid(pid, &status, 0) == -1){
+	    close(fd);
+	    va_end(args);
+            return false;
+    }
+
+    else if (WIFEXITED(status)){
+
+       	    if (WEXITSTATUS(status) == 0){
+		    close(fd);
+                    va_end(args);
+		    return true;
+	    }
+
+	    else if (WEXITSTATUS(status) == 1){
+		    close(fd);
+           	    va_end(args);
+		    return false;
+	    }
+
+    }
 
 /*
  * TODO
